@@ -2,4 +2,4 @@ wandb/
 .slurm_logs/
 data/
 __pycache__/
-weight/
+weight

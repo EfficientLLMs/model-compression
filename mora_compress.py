@@ -66,7 +66,7 @@ if __name__ == "__main__":
     small_model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/pythia-" + args.small_model)
     small_model = get_peft_model(small_model, mora_config)
 
-    eval_results = pd.DataFrame()
+    eval_results = []
 
     # Prepare for accelerator
     eval_dataloader, large_model, small_model, tokenizer = accelerator.prepare(
@@ -76,35 +76,25 @@ if __name__ == "__main__":
     # Evaluate the large model
     eval_loss, eval_rouge_scores = evaluate_model(large_model, eval_dataloader, accelerator, tokenizer)
 
-    eval_results = pd.concat(
-        [
-            eval_results,
-            pd.DataFrame(
-                {
-                    "model": "fine_tuned_" + args.large_model,
-                    "rank": args.rank,
-                    "eval_loss": eval_loss,
-                    **eval_rouge_scores,
-                }
-            ),
-        ]
+    eval_results.append(
+        {
+            "model": "fine_tuned_" + args.large_model,
+            "rank": args.rank,
+            "eval_loss": eval_loss,
+            **eval_rouge_scores,
+        }
     )
 
     # Evaluate the small model
     eval_loss, eval_rouge_scores = evaluate_model(small_model, eval_dataloader, accelerator, tokenizer)
 
-    eval_results = pd.concat(
-        [
-            eval_results,
-            pd.DataFrame(
-                {
-                    "model": "raw_" + args.small_model,
-                    "rank": args.rank,
-                    "eval_loss": eval_loss,
-                    **eval_rouge_scores,
-                }
-            ),
-        ]
+    eval_results.append(
+        {
+            "model": "raw_" + args.small_model,
+            "rank": args.rank,
+            "eval_loss": eval_loss,
+            **eval_rouge_scores,
+        }
     )
 
 
@@ -121,26 +111,25 @@ if __name__ == "__main__":
                     parent_module = getattr(parent_module, part)
 
             # Move the new module to the correct device
-            new_module = new_module.to(parent_module.device)
+            new_module = new_module.to(accelerator.device)
             
             setattr(parent_module, parts[-1], nn.ModuleDict({"default": new_module}))
 
     # Evaluate the large model with truncated weights
-    eval_loss, eval_rouge_scores = evaluate_model(large_model, eval_dataloader, accelerator, tokenizer)
+    eval_loss, eval_rouge_scores = evaluate_model(small_model, eval_dataloader, accelerator, tokenizer)
 
-    eval_results = pd.concat(
-        [
-            eval_results,
-            pd.DataFrame(
-                {
-                    "model": "truncated_" + args.small_model + "_from_" + args.large_model,
-                    "rank": args.rank,
-                    "eval_loss": eval_loss,
-                    **eval_rouge_scores,
-                }
-            ),
-        ]
+    eval_results.append(
+        {
+            "model": "truncated_" + args.small_model + "_from_" + args.large_model,
+            "rank": args.rank,
+            "eval_loss": eval_loss,
+            **eval_rouge_scores,
+        }
     )
 
-    # Save the evaluation results
-    eval_results.to_csv(args.output_csv, index=False)
+    # Print the evaluation results
+    print(eval_results)
+
+    # Save the evaluation results dict to a CSV file
+    df = pd.DataFrame(eval_results)
+    df.to_csv(args.output_csv, index=False)
